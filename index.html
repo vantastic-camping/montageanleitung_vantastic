@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VANtastic Montageanleitung</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@400;600;700&display=swap');
+
+  :root {
+    --black: #0a0a0a;
+    --white: #ffffff;
+    --gray-50: #f9f9f9;
+    --gray-100: #f0f0f0;
+    --gray-200: #e0e0e0;
+    --gray-400: #999;
+    --gray-600: #555;
+    --gray-800: #222;
+    --accent: #1a1a1a;
+    --danger: #c0392b;
+    --success: #27ae60;
+    --radius: 6px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.14);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Barlow', sans-serif;
+    background: var(--gray-50);
+    color: var(--black);
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  .app-header {
+    background: var(--white);
+    border-bottom: 2px solid var(--black);
+    padding: 0 32px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .app-header .logo-area {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .app-header .logo-img {
+    height: 32px;
+    object-fit: contain;
+  }
+  .app-header .app-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--gray-600);
+    border-left: 2px solid var(--gray-200);
+    padding-left: 16px;
+  }
+  .header-actions { display: flex; gap: 12px; align-items: center; }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border: 2px solid var(--black);
+    background: var(--white);
+    color: var(--black);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: all 0.18s ease;
+    text-decoration: none;
+  }
+  .btn:hover { background: var(--black); color: var(--white); }
+  .btn-primary { background: var(--black); color: var(--white); }
+  .btn-primary:hover { background: var(--gray-800); border-color: var(--gray-800); }
+  .btn-danger { border-color: var(--danger); color: var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: var(--white); }
+  .btn-success { border-color: var(--success); color: var(--success); }
+  .btn-success:hover { background: var(--success); color: var(--white); }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-icon { padding: 8px; min-width: 36px; justify-content: center; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed; bottom: 28px; right: 28px;
+    background: var(--black); color: var(--white);
+    padding: 12px 20px; border-radius: var(--radius);
+    font-size: 14px; font-weight: 500;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s; z-index: 9999;
+  }
+  #toast.show { opacity: 1; }
+
+  /* ── STATUS BAR ── */
+  #statusBar {
+    background: var(--black); color: var(--white);
+    font-size: 12px; text-align: center; padding: 4px;
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 0.05em;
+  }
+
+  /* ══════════════════════════════════════
+     START PAGE
+  ══════════════════════════════════════ */
+  #startPage { display: block; }
+  #detailPage, #stepModal, #changeModal, #previewModal { display: none; }
+
+  .page-container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+  .start-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .start-toolbar h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .search-wrap {
+    position: relative;
+    flex: 1;
+    max-width: 380px;
+  }
+  .search-wrap input {
+    width: 100%;
+    padding: 9px 16px 9px 40px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: 'Barlow', sans-serif;
+    background: var(--white);
+    transition: border-color 0.2s;
+  }
+  .search-wrap input:focus { outline: none; border-color: var(--black); }
+  .search-icon {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--gray-400); font-size: 16px;
+  }
+
+  /* ── TABLE ── */
+  .records-table-wrap {
+    background: var(--white);
+    border: 2px solid var(--black);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .records-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .records-table thead {
+    background: var(--black);
+    color: var(--white);
+  }
+  .records-table thead th {
+    padding: 12px 18px;
+    text-align: left;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .records-table tbody tr {
+    border-bottom: 1px solid var(--gray-100);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .records-table tbody tr:hover { background: var(--gray-50); }
+  .records-table tbody tr:last-child { border-bottom: none; }
+  .records-table td {
+    padding: 13px 18px;
+    font-size: 14px;
+    vertical-align: middle;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border: 1.5px solid var(--black);
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 0.04em;
+  }
+  .pdf-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    color: var(--danger); font-size: 13px; font-weight: 600;
+    text-decoration: none;
+  }
+  .pdf-link:hover { text-decoration: underline; }
+  .empty-state {
+    text-align: center; padding: 64px 24px; color: var(--gray-400);
+  }
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-state p { font-size: 15px; }
+
+  /* ══════════════════════════════════════
+     DETAIL PAGE
+  ══════════════════════════════════════ */
+  .detail-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
+  }
+  .detail-header-left { display: flex; align-items: center; gap: 16px; }
+  .detail-header-right { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .back-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 22px; color: var(--gray-600);
+    display: flex; align-items: center;
+    transition: color 0.15s;
+  }
+  .back-btn:hover { color: var(--black); }
+
+  .detail-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 26px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--white);
+    border: 2px solid var(--black);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--gray-600); margin-bottom: 18px;
+    border-bottom: 1.5px solid var(--gray-100); padding-bottom: 10px;
+  }
+
+  /* ── HEAD DATA GRID ── */
+  .head-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+  }
+  .head-field label {
+    display: block; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--gray-400); margin-bottom: 6px;
+  }
+  .head-field input {
+    width: 100%; padding: 9px 12px;
+    border: 1.5px solid var(--gray-200);
+    border-radius: var(--radius);
+    font-size: 14px; font-family: 'Barlow', sans-serif;
+    transition: border-color 0.2s;
+  }
+  .head-field input:focus { outline: none; border-color: var(--black); }
+
+  /* ── CHANGE HISTORY ── */
+  .change-list { list-style: none; }
+  .change-item {
+    padding: 10px 14px;
+    background: var(--gray-50);
+    border-left: 3px solid var(--black);
+    margin-bottom: 8px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .change-item .change-date {
+    font-weight: 700; font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px; letter-spacing: 0.04em; margin-right: 8px;
+  }
+
+  /* ── STEPS ── */
+  .step-card {
+    background: var(--white);
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .step-card:hover { border-color: var(--black); }
+
+  .step-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px;
+    background: var(--gray-50);
+    border-bottom: 1.5px solid var(--gray-200);
+  }
+  .step-header-left { display: flex; align-items: center; gap: 12px; }
+  .step-number {
+    width: 32px; height: 32px;
+    background: var(--black); color: var(--white);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step-label {
+    font-size: 15px; font-weight: 600;
+  }
+  .step-date {
+    font-size: 11px; color: var(--gray-400);
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 0.05em;
+  }
+  .step-body { padding: 16px 18px; }
+  .step-desc { font-size: 14px; line-height: 1.6; color: var(--gray-600); margin-bottom: 14px; }
+
+  /* ── PHOTOS ── */
+  .photo-grid {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
+  }
+  .photo-thumb {
+    width: 90px; height: 70px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 2px solid var(--gray-200);
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .photo-thumb:hover { transform: scale(1.05); border-color: var(--black); }
+
+  .pdf-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border: 1.5px solid var(--danger);
+    border-radius: var(--radius);
+    color: var(--danger); font-size: 13px; font-weight: 600;
+    cursor: pointer; margin: 4px 4px 4px 0;
+    transition: background 0.15s;
+  }
+  .pdf-item:hover { background: var(--danger); color: var(--white); }
+
+  /* ══════════════════════════════════════
+     MODALS
+  ══════════════════════════════════════ */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 500;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 16px;
+    overflow-y: auto;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--white);
+    border: 2px solid var(--black);
+    border-radius: var(--radius);
+    width: 100%;
+    max-width: 680px;
+    box-shadow: var(--shadow-lg);
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 2px solid var(--black);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 17px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .modal-close {
+    background: none; border: none; cursor: pointer;
+    font-size: 22px; color: var(--gray-600);
+    line-height: 1; transition: color 0.15s;
+  }
+  .modal-close:hover { color: var(--black); }
+  .modal-body { padding: 24px; }
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1.5px solid var(--gray-100);
+    display: flex; gap: 10px; justify-content: flex-end;
+  }
+
+  .form-group { margin-bottom: 18px; }
+  .form-group label {
+    display: block; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--gray-600); margin-bottom: 7px;
+  }
+  .form-group input,
+  .form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid var(--gray-200);
+    border-radius: var(--radius);
+    font-size: 14px; font-family: 'Barlow', sans-serif;
+    transition: border-color 0.2s;
+    resize: vertical;
+  }
+  .form-group input:focus,
+  .form-group textarea:focus { outline: none; border-color: var(--black); }
+
+  .upload-area {
+    border: 2px dashed var(--gray-200);
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: center;
+    color: var(--gray-400);
+    font-size: 14px;
+    transition: border-color 0.2s;
+  }
+  .upload-area:hover { border-color: var(--gray-400); }
+
+  .upload-preview-grid {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px;
+  }
+  .upload-preview-item {
+    position: relative;
+  }
+  .upload-preview-item img {
+    width: 80px; height: 64px; object-fit: cover;
+    border-radius: 4px; border: 2px solid var(--gray-200);
+  }
+  .upload-preview-item .remove-btn {
+    position: absolute; top: -6px; right: -6px;
+    width: 20px; height: 20px;
+    background: var(--danger); color: white;
+    border: none; border-radius: 50%;
+    font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+
+  /* ── PREVIEW MODAL ── */
+  #previewModal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.9);
+    z-index: 1000;
+    display: none;
+    align-items: center; justify-content: center;
+  }
+  #previewModal.open { display: flex; }
+  #previewModal img {
+    max-width: 90vw; max-height: 90vh;
+    object-fit: contain;
+    border-radius: var(--radius);
+  }
+  #previewModal iframe {
+    width: 90vw; height: 90vh;
+    border: none; border-radius: var(--radius);
+  }
+  .preview-close {
+    position: fixed; top: 20px; right: 24px;
+    background: white; color: black;
+    border: none; cursor: pointer;
+    font-size: 28px; width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+
+  /* ── PROGRESS ── */
+  .progress-bar {
+    width: 100%; height: 4px; background: var(--gray-100);
+    border-radius: 2px; overflow: hidden; margin-top: 8px;
+  }
+  .progress-fill {
+    height: 100%; background: var(--black);
+    transition: width 0.3s; width: 0%;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 640px) {
+    .app-header { padding: 0 16px; }
+    .page-container { padding: 20px 14px; }
+    .records-table td, .records-table th { padding: 10px 10px; }
+    .head-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="statusBar">⚡ Verbinde mit Firebase...</div>
+
+<!-- APP HEADER -->
+<header class="app-header">
+  <div class="logo-area">
+    <img class="logo-img" src="https://raw.githubusercontent.com/juergenschmider/vantastic-assets/main/logo.png"
+         onerror="this.style.display='none'; document.getElementById('logoText').style.display='block'"
+         alt="VANtastic Logo">
+    <span id="logoText" style="display:none;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;letter-spacing:0.08em;">VAN<span style="font-weight:300">TASTIC</span></span>
+    <span class="app-title">Montageanleitung</span>
+  </div>
+  <div class="header-actions" id="headerActions">
+    <!-- context-dependent buttons injected here -->
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════
+     START PAGE
+══════════════════════════════════════ -->
+<div id="startPage">
+  <div class="page-container">
+    <div class="start-toolbar">
+      <h1>Montageanleitungen</h1>
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Suche…" oninput="renderTable()">
+      </div>
+      <button class="btn btn-primary" onclick="newRecord()">＋ Neue Anleitung</button>
+    </div>
+    <div class="records-table-wrap">
+      <table class="records-table">
+        <thead>
+          <tr>
+            <th>Produkt</th>
+            <th>Produkt-Nr.</th>
+            <th>Rev.</th>
+            <th>Ver.</th>
+            <th>Datum</th>
+            <th>PDF</th>
+          </tr>
+        </thead>
+        <tbody id="recordsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     DETAIL PAGE
+══════════════════════════════════════ -->
+<div id="detailPage">
+  <div class="page-container">
+
+    <div class="detail-header">
+      <div class="detail-header-left">
+        <button class="back-btn" onclick="goBack()" title="Zurück">←</button>
+        <span class="detail-title" id="detailTitle">Neue Anleitung</span>
+      </div>
+      <div class="detail-header-right">
+        <button class="btn btn-success" onclick="saveRecord()">💾 Speichern</button>
+        <button class="btn" onclick="exportPDF()">📄 PDF exportieren</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteRecord()">🗑 Löschen</button>
+      </div>
+    </div>
+
+    <!-- HEAD DATA -->
+    <div class="card">
+      <div class="card-title">Kopfdaten</div>
+      <div class="head-grid">
+        <div class="head-field">
+          <label>Produkt</label>
+          <input type="text" id="fProdukt" placeholder="Produktname" oninput="onFieldChange()">
+        </div>
+        <div class="head-field">
+          <label>Produkt-Nr.</label>
+          <input type="text" id="fProduktNr" placeholder="z.B. VAN-001" oninput="onFieldChange()">
+        </div>
+        <div class="head-field">
+          <label>Revision</label>
+          <input type="text" id="fRevision" placeholder="z.B. A" oninput="onFieldChange()">
+        </div>
+        <div class="head-field">
+          <label>Version</label>
+          <input type="text" id="fVersion" placeholder="z.B. 1.0" oninput="onFieldChange()">
+        </div>
+        <div class="head-field">
+          <label>Erstellungsdatum</label>
+          <input type="date" id="fDatum" oninput="onFieldChange()">
+        </div>
+      </div>
+    </div>
+
+    <!-- CHANGE HISTORY -->
+    <div class="card">
+      <div class="card-title">Änderungshistorie</div>
+      <ul class="change-list" id="changeList"></ul>
+      <button class="btn btn-sm" onclick="openChangeModal()" style="margin-top:10px;">＋ Änderung erfassen</button>
+    </div>
+
+    <!-- STEPS -->
+    <div class="card">
+      <div class="card-title">Montageschritte</div>
+      <div id="stepsList"></div>
+      <button class="btn btn-sm" onclick="openStepModal()" style="margin-top:10px;">＋ Montageschritt anlegen</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     CHANGE MODAL
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="changeModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      Änderung erfassen
+      <button class="modal-close" onclick="closeChangeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Änderungstext</label>
+        <textarea id="changeText" rows="4" placeholder="Beschreibe die Änderung…"></textarea>
+      </div>
+      <p style="font-size:12px;color:var(--gray-400);">Datum wird automatisch hinzugefügt: <strong id="todayDateDisplay"></strong></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-sm" onclick="closeChangeModal()">Abbrechen</button>
+      <button class="btn btn-primary btn-sm" onclick="saveChange()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     STEP MODAL
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="stepModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="stepModalTitle">Montageschritt anlegen</span>
+      <button class="modal-close" onclick="closeStepModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--gray-400);margin-bottom:16px;" id="stepDateLabel"></p>
+
+      <div class="form-group">
+        <label>Bezeichnung *</label>
+        <input type="text" id="stepLabel" placeholder="Montageschritt – Bezeichnung">
+      </div>
+      <div class="form-group">
+        <label>Beschreibung</label>
+        <textarea id="stepDesc" rows="4" placeholder="Detaillierte Beschreibung…"></textarea>
+      </div>
+
+      <!-- PHOTOS -->
+      <div class="form-group">
+        <label>Fotos</label>
+        <div class="upload-area">
+          <div style="margin-bottom:10px;">
+            <button class="btn btn-sm" onclick="document.getElementById('photoInput').click()">📁 Aus Datei auswählen</button>
+            <button class="btn btn-sm" onclick="document.getElementById('cameraInput').click()">📷 Foto aufnehmen</button>
+          </div>
+          <div style="font-size:12px;color:var(--gray-400);">Fotos werden auf max. 100 kB komprimiert</div>
+        </div>
+        <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="handlePhotoUpload(this)">
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoUpload(this)">
+        <div class="upload-preview-grid" id="photoPreviewGrid"></div>
+        <div class="progress-bar" id="photoProgress" style="display:none"><div class="progress-fill" id="photoProgressFill"></div></div>
+      </div>
+
+      <!-- PDFs -->
+      <div class="form-group">
+        <label>PDF-Anhänge (max. 1 MB nach Komprimierung)</label>
+        <div class="upload-area">
+          <button class="btn btn-sm" onclick="document.getElementById('pdfInput').click()">📎 PDF hochladen</button>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">Max. 1 MB</div>
+        </div>
+        <input type="file" id="pdfInput" accept="application/pdf" multiple style="display:none" onchange="handlePDFUpload(this)">
+        <div id="pdfPreviewList" style="margin-top:10px;"></div>
+        <div class="progress-bar" id="pdfProgress" style="display:none"><div class="progress-fill" id="pdfProgressFill"></div></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-sm" onclick="closeStepModal()">Abbrechen</button>
+      <button class="btn btn-primary btn-sm" onclick="saveStep()">Datensatz anlegen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── PREVIEW MODAL ── -->
+<div id="previewModal">
+  <button class="preview-close" onclick="closePreview()">×</button>
+  <div id="previewContent"></div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════════
+     FIREBASE + APP LOGIC
+══════════════════════════════════════ -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, collection,
+         addDoc, getDocs, deleteDoc, updateDoc, query, orderBy }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+// ── Firebase Init ──────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyBZ8zzu2yr_H_tl0i9pK6AHd_LfVjNwq8s",
+  authDomain: "vantastic-apps.firebaseapp.com",
+  projectId: "vantastic-apps",
+  storageBucket: "vantastic-apps.firebasestorage.app",
+  messagingSenderId: "875686114859",
+  appId: "1:875686114859:web:0e3a161f48c33b06579c6e"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
+const COLLECTION = "MONTAGEANLEITUNG-data";
+
+// ── State ──────────────────────────────────────────────────────────────────
+let records = [];       // all assembly instructions
+let currentId = null;   // currently open record id
+let currentRecord = {}; // working copy
+let stepEditIndex = null;
+let pendingPhotos = [];  // [{dataUrl, file}] for current step modal
+let pendingPDFs = [];    // [{name, dataUrl, file}] for current step modal
+let syncTimer = null;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function toast(msg, dur = 2800) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+function status(msg) {
+  const el = document.getElementById('statusBar');
+  if (el) el.textContent = msg;
+}
+function todayStr() {
+  return new Date().toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+function todayISO() { return new Date().toISOString().slice(0,10); }
+function uid() { return '_' + Math.random().toString(36).slice(2,10); }
+
+// ── Sync ──────────────────────────────────────────────────────────────────
+function scheduleSync() {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => pushToFirebase(true), 2500);
+}
+
+async function pushToFirebase(silent) {
+  try {
+    status('⬆ Speichere…');
+    const batch = records.map(r => setDoc(doc(db, COLLECTION, r.id), r));
+    await Promise.all(batch);
+    status('✅ Synchronisiert · ' + new Date().toLocaleTimeString('de-DE'));
+    if (!silent) toast('✅ Gespeichert');
+  } catch(e) {
+    status('❌ Sync-Fehler: ' + e.message);
+    if (!silent) toast('❌ Fehler beim Speichern');
+  }
+}
+
+async function pullFromFirebase() {
+  try {
+    status('⬇ Lade Daten…');
+    const snap = await getDocs(collection(db, COLLECTION));
+    records = [];
+    snap.forEach(d => records.push({ id: d.id, ...d.data() }));
+    records.sort((a,b) => (a.produkt||'').localeCompare(b.produkt||''));
+    localStorage.setItem('montageanleitung_cache', JSON.stringify(records));
+    status('✅ ' + records.length + ' Einträge geladen');
+    renderTable();
+  } catch(e) {
+    status('⚠ Firebase nicht erreichbar – lade Cache');
+    const cache = localStorage.getItem('montageanleitung_cache');
+    if (cache) { try { records = JSON.parse(cache); renderTable(); } catch(_){} }
+  }
+}
+
+async function deleteRecordFromFirebase(id) {
+  try {
+    await deleteDoc(doc(db, COLLECTION, id));
+  } catch(e) {
+    console.warn('Delete error', e);
+  }
+}
+
+// ── START PAGE ────────────────────────────────────────────────────────────
+window.renderTable = function() {
+  const tbody = document.getElementById('recordsBody');
+  if (!tbody) return;
+  const q = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  const filtered = records.filter(r => {
+    const haystack = [r.produkt,r.produktNr,r.revision,r.version,r.datum].join(' ').toLowerCase();
+    return !q || haystack.includes(q);
+  });
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📋</div><p>Noch keine Montageanleitungen vorhanden.</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map(r => {
+    const pdfBadge = r.exportedPdfUrl
+      ? `<a class="pdf-link" href="${r.exportedPdfUrl}" target="_blank" onclick="event.stopPropagation()">📄 ${(r.exportedPdfName||'PDF')}</a>`
+      : '–';
+    return `<tr onclick="openRecord('${r.id}')">
+      <td><strong>${r.produkt||'–'}</strong></td>
+      <td>${r.produktNr||'–'}</td>
+      <td><span class="badge">${r.revision||'–'}</span></td>
+      <td>${r.version||'–'}</td>
+      <td>${r.datum||'–'}</td>
+      <td>${pdfBadge}</td>
+    </tr>`;
+  }).join('');
+};
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────
+window.newRecord = function() {
+  currentId = uid();
+  currentRecord = {
+    id: currentId,
+    produkt: '', produktNr: '', revision: '', version: '',
+    datum: todayISO(),
+    changes: [],
+    steps: []
+  };
+  showDetailPage();
+};
+
+window.openRecord = function(id) {
+  const r = records.find(r => r.id === id);
+  if (!r) return;
+  currentId = id;
+  currentRecord = JSON.parse(JSON.stringify(r));
+  showDetailPage();
+};
+
+function showDetailPage() {
+  document.getElementById('startPage').style.display = 'none';
+  document.getElementById('detailPage').style.display = 'block';
+  fillDetailForm();
+  renderSteps();
+  renderChanges();
+  updateDetailTitle();
+}
+
+window.goBack = function() {
+  document.getElementById('startPage').style.display = 'block';
+  document.getElementById('detailPage').style.display = 'none';
+  currentId = null;
+  renderTable();
+};
+
+function updateDetailTitle() {
+  const el = document.getElementById('detailTitle');
+  if (el) el.textContent = currentRecord.produkt || 'Neue Anleitung';
+}
+
+function fillDetailForm() {
+  const s = v => document.getElementById(v);
+  const set = (id, val) => { const el = s(id); if(el) el.value = val||''; };
+  set('fProdukt', currentRecord.produkt);
+  set('fProduktNr', currentRecord.produktNr);
+  set('fRevision', currentRecord.revision);
+  set('fVersion', currentRecord.version);
+  set('fDatum', currentRecord.datum);
+}
+
+window.onFieldChange = function() {
+  currentRecord.produkt = document.getElementById('fProdukt')?.value || '';
+  currentRecord.produktNr = document.getElementById('fProduktNr')?.value || '';
+  currentRecord.revision = document.getElementById('fRevision')?.value || '';
+  currentRecord.version = document.getElementById('fVersion')?.value || '';
+  currentRecord.datum = document.getElementById('fDatum')?.value || '';
+  updateDetailTitle();
+};
+
+window.saveRecord = async function() {
+  onFieldChange();
+  if (!currentRecord.produkt) { toast('⚠ Bitte Produktname eingeben'); return; }
+  const existing = records.findIndex(r => r.id === currentId);
+  if (existing >= 0) { records[existing] = currentRecord; }
+  else { records.push(currentRecord); }
+  records.sort((a,b) => (a.produkt||'').localeCompare(b.produkt||''));
+  await pushToFirebase(false);
+  toast('✅ Gespeichert');
+};
+
+window.deleteRecord = async function() {
+  if (!confirm('Datensatz wirklich löschen?')) return;
+  await deleteRecordFromFirebase(currentId);
+  records = records.filter(r => r.id !== currentId);
+  localStorage.setItem('montageanleitung_cache', JSON.stringify(records));
+  goBack();
+  toast('🗑 Gelöscht');
+};
+
+// ── CHANGE HISTORY ────────────────────────────────────────────────────────
+function renderChanges() {
+  const list = document.getElementById('changeList');
+  if (!list) return;
+  const changes = currentRecord.changes || [];
+  if (changes.length === 0) {
+    list.innerHTML = '<li style="color:var(--gray-400);font-size:14px;">Noch keine Änderungen erfasst.</li>';
+    return;
+  }
+  list.innerHTML = changes.map(c =>
+    `<li class="change-item"><span class="change-date">${c.date}</span>${c.text}</li>`
+  ).join('');
+}
+
+window.openChangeModal = function() {
+  const el = document.getElementById('todayDateDisplay');
+  if (el) el.textContent = todayStr();
+  const ta = document.getElementById('changeText');
+  if (ta) ta.value = '';
+  const ov = document.getElementById('changeModalOverlay');
+  if (ov) ov.classList.add('open');
+};
+window.closeChangeModal = function() {
+  const ov = document.getElementById('changeModalOverlay');
+  if (ov) ov.classList.remove('open');
+};
+window.saveChange = function() {
+  const text = document.getElementById('changeText')?.value?.trim();
+  if (!text) { toast('⚠ Bitte Text eingeben'); return; }
+  if (!currentRecord.changes) currentRecord.changes = [];
+  currentRecord.changes.unshift({ date: todayStr(), text });
+  renderChanges();
+  closeChangeModal();
+  scheduleSync();
+};
+
+// ── STEPS ─────────────────────────────────────────────────────────────────
+function renderSteps() {
+  const container = document.getElementById('stepsList');
+  if (!container) return;
+  const steps = currentRecord.steps || [];
+  if (steps.length === 0) {
+    container.innerHTML = '<p style="color:var(--gray-400);font-size:14px;">Noch keine Montageschritte angelegt.</p>';
+    return;
+  }
+  container.innerHTML = steps.map((s, i) => {
+    const photos = (s.photos||[]).map(p =>
+      `<img class="photo-thumb" src="${p.url}" alt="Foto" onclick="openPreview('img','${p.url}')">`
+    ).join('');
+    const pdfs = (s.pdfs||[]).map(p =>
+      `<span class="pdf-item" onclick="openPreview('pdf','${p.url}')">📄 ${p.name}</span>`
+    ).join('');
+    return `<div class="step-card">
+      <div class="step-header">
+        <div class="step-header-left">
+          <div class="step-number">${i+1}</div>
+          <div>
+            <div class="step-label">${s.label||'Schritt'}</div>
+            <div class="step-date">${s.date||''}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm" onclick="editStep(${i})">✏ Bearbeiten</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteStep(${i})">🗑</button>
+        </div>
+      </div>
+      <div class="step-body">
+        ${s.desc ? `<div class="step-desc">${s.desc}</div>` : ''}
+        ${photos ? `<div class="photo-grid">${photos}</div>` : ''}
+        ${pdfs ? `<div>${pdfs}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.openStepModal = function() {
+  stepEditIndex = null;
+  pendingPhotos = [];
+  pendingPDFs = [];
+  const lbl = document.getElementById('stepModalTitle');
+  if (lbl) lbl.textContent = 'Montageschritt anlegen';
+  const dl = document.getElementById('stepDateLabel');
+  if (dl) dl.textContent = 'Anlagedatum: ' + todayStr();
+  document.getElementById('stepLabel').value = '';
+  document.getElementById('stepDesc').value = '';
+  document.getElementById('photoPreviewGrid').innerHTML = '';
+  document.getElementById('pdfPreviewList').innerHTML = '';
+  document.getElementById('stepModalOverlay').classList.add('open');
+};
+
+window.editStep = function(i) {
+  stepEditIndex = i;
+  const s = currentRecord.steps[i];
+  pendingPhotos = (s.photos||[]).map(p => ({ existing: true, url: p.url, name: p.name||'Foto' }));
+  pendingPDFs = (s.pdfs||[]).map(p => ({ existing: true, url: p.url, name: p.name }));
+  const lbl = document.getElementById('stepModalTitle');
+  if (lbl) lbl.textContent = 'Montageschritt bearbeiten';
+  const dl = document.getElementById('stepDateLabel');
+  if (dl) dl.textContent = 'Änderungsdatum: ' + todayStr();
+  document.getElementById('stepLabel').value = s.label||'';
+  document.getElementById('stepDesc').value = s.desc||'';
+  renderPhotoPreview();
+  renderPDFPreview();
+  document.getElementById('stepModalOverlay').classList.add('open');
+};
+
+window.deleteStep = function(i) {
+  if (!confirm('Schritt löschen?')) return;
+  currentRecord.steps.splice(i, 1);
+  renderSteps();
+  scheduleSync();
+};
+
+window.closeStepModal = function() {
+  document.getElementById('stepModalOverlay').classList.remove('open');
+};
+
+window.saveStep = async function() {
+  const label = document.getElementById('stepLabel')?.value?.trim();
+  if (!label) { toast('⚠ Bezeichnung erforderlich'); return; }
+  const desc = document.getElementById('stepDesc')?.value?.trim();
+
+  // Upload pending files
+  const photos = await uploadPendingPhotos();
+  const pdfs = await uploadPendingPDFs();
+
+  const stepData = {
+    label, desc,
+    date: todayStr(),
+    photos,
+    pdfs
+  };
+
+  if (!currentRecord.steps) currentRecord.steps = [];
+  if (stepEditIndex !== null) {
+    currentRecord.steps[stepEditIndex] = stepData;
+  } else {
+    currentRecord.steps.push(stepData);
+  }
+  renderSteps();
+  closeStepModal();
+  scheduleSync();
+};
+
+// ── FILE HANDLING ──────────────────────────────────────────────────────────
+window.handlePhotoUpload = async function(input) {
+  const files = Array.from(input.files);
+  for (const file of files) {
+    const compressed = await compressImage(file, 100 * 1024); // 100kB
+    const dataUrl = compressed.dataUrl;
+    pendingPhotos.push({ file: compressed.blob, dataUrl, name: file.name, existing: false });
+  }
+  input.value = '';
+  renderPhotoPreview();
+};
+
+window.handlePDFUpload = async function(input) {
+  const files = Array.from(input.files);
+  for (const file of files) {
+    if (file.size > 1024 * 1024) {
+      toast('⚠ PDF zu groß (max. 1 MB): ' + file.name);
+      continue;
+    }
+    const dataUrl = await readFileAsDataURL(file);
+    pendingPDFs.push({ file, dataUrl, name: file.name, existing: false });
+  }
+  input.value = '';
+  renderPDFPreview();
+};
+
+function renderPhotoPreview() {
+  const grid = document.getElementById('photoPreviewGrid');
+  if (!grid) return;
+  grid.innerHTML = pendingPhotos.map((p, i) => `
+    <div class="upload-preview-item">
+      <img src="${p.dataUrl||p.url}" alt="">
+      <button class="remove-btn" onclick="removePhoto(${i})">×</button>
+    </div>`
+  ).join('');
+}
+
+function renderPDFPreview() {
+  const list = document.getElementById('pdfPreviewList');
+  if (!list) return;
+  list.innerHTML = pendingPDFs.map((p, i) => `
+    <span class="pdf-item">📄 ${p.name}
+      <button onclick="removePDF(${i})" style="background:none;border:none;cursor:pointer;color:inherit;font-size:14px;margin-left:6px;">×</button>
+    </span>`
+  ).join('');
+}
+
+window.removePhoto = function(i) { pendingPhotos.splice(i,1); renderPhotoPreview(); };
+window.removePDF = function(i) { pendingPDFs.splice(i,1); renderPDFPreview(); };
+
+async function uploadPendingPhotos() {
+  const result = [];
+  const prog = document.getElementById('photoProgress');
+  const fill = document.getElementById('photoProgressFill');
+  const newPhotos = pendingPhotos.filter(p => !p.existing);
+  const existing = pendingPhotos.filter(p => p.existing);
+  existing.forEach(p => result.push({ url: p.url, name: p.name }));
+  if (newPhotos.length === 0) return result;
+  if (prog) prog.style.display = 'block';
+  for (let i = 0; i < newPhotos.length; i++) {
+    const p = newPhotos[i];
+    try {
+      const storageRef = ref(storage, `montageanleitung/photos/${uid()}_${p.name}`);
+      await uploadBytes(storageRef, p.file);
+      const url = await getDownloadURL(storageRef);
+      result.push({ url, name: p.name });
+    } catch(e) {
+      console.warn('Photo upload failed', e);
+    }
+    if (fill) fill.style.width = ((i+1)/newPhotos.length*100) + '%';
+  }
+  if (prog) prog.style.display = 'none';
+  return result;
+}
+
+async function uploadPendingPDFs() {
+  const result = [];
+  const prog = document.getElementById('pdfProgress');
+  const fill = document.getElementById('pdfProgressFill');
+  const newPDFs = pendingPDFs.filter(p => !p.existing);
+  const existing = pendingPDFs.filter(p => p.existing);
+  existing.forEach(p => result.push({ url: p.url, name: p.name }));
+  if (newPDFs.length === 0) return result;
+  if (prog) prog.style.display = 'block';
+  for (let i = 0; i < newPDFs.length; i++) {
+    const p = newPDFs[i];
+    try {
+      const storageRef = ref(storage, `montageanleitung/pdfs/${uid()}_${p.name}`);
+      await uploadBytes(storageRef, p.file);
+      const url = await getDownloadURL(storageRef);
+      result.push({ url, name: p.name });
+    } catch(e) {
+      console.warn('PDF upload failed', e);
+    }
+    if (fill) fill.style.width = ((i+1)/newPDFs.length*100) + '%';
+  }
+  if (prog) prog.style.display = 'none';
+  return result;
+}
+
+async function compressImage(file, maxBytes) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        const canvas = document.createElement('canvas');
+        let quality = 0.85;
+        const tryCompress = () => {
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          canvas.toBlob(blob => {
+            if (blob.size <= maxBytes || quality < 0.1) {
+              const dataUrl = canvas.toDataURL('image/jpeg', quality);
+              resolve({ blob, dataUrl });
+            } else {
+              quality -= 0.1;
+              if (blob.size > maxBytes * 3) { w = Math.floor(w * 0.8); h = Math.floor(h * 0.8); }
+              tryCompress();
+            }
+          }, 'image/jpeg', quality);
+        };
+        tryCompress();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function readFileAsDataURL(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = () => rej(new Error('Read failed'));
+    r.readAsDataURL(file);
+  });
+}
+
+// ── PREVIEW ────────────────────────────────────────────────────────────────
+window.openPreview = function(type, url) {
+  const content = document.getElementById('previewContent');
+  if (!content) return;
+  if (type === 'img') {
+    content.innerHTML = `<img src="${url}" alt="Vorschau">`;
+  } else {
+    content.innerHTML = `<iframe src="${url}"></iframe>`;
+  }
+  const modal = document.getElementById('previewModal');
+  if (modal) modal.classList.add('open');
+};
+window.closePreview = function() {
+  const modal = document.getElementById('previewModal');
+  if (modal) modal.classList.remove('open');
+  const content = document.getElementById('previewContent');
+  if (content) content.innerHTML = '';
+};
+
+// ── PDF EXPORT ────────────────────────────────────────────────────────────
+window.exportPDF = async function() {
+  toast('📄 PDF wird erstellt…', 5000);
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = 210, H = 297;
+    const margin = 18;
+    let y = 0;
+    let pageNum = 1;
+    const totalSteps = (currentRecord.steps||[]).length;
+
+    function addHeader() {
+      pdf.setFillColor(10,10,10);
+      pdf.rect(0, 0, W, 18, 'F');
+      pdf.setFont('helvetica','bold');
+      pdf.setFontSize(11);
+      pdf.setTextColor(255,255,255);
+      pdf.text('VANTASTIC  |  Montageanleitung', margin, 12);
+    }
+
+    function addFooter(page, total) {
+      pdf.setFont('helvetica','normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(150,150,150);
+      pdf.text('Montageanleitung App', margin, H-8);
+      pdf.text(`Seite ${page}`, W/2, H-8, { align:'center' });
+      pdf.text(new Date().toLocaleDateString('de-DE'), W-margin, H-8, { align:'right' });
+    }
+
+    function checkNewPage(needed=14) {
+      if (y + needed > H - 20) {
+        addFooter(pageNum, '?');
+        pdf.addPage();
+        pageNum++;
+        addHeader();
+        y = 26;
+      }
+    }
+
+    addHeader();
+    y = 28;
+
+    // Title
+    pdf.setFont('helvetica','bold');
+    pdf.setFontSize(20);
+    pdf.setTextColor(10,10,10);
+    pdf.text(currentRecord.produkt || 'Montageanleitung', margin, y);
+    y += 10;
+
+    // Head data
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica','normal');
+    pdf.setTextColor(80,80,80);
+    const headLine = [
+      currentRecord.produktNr ? `Nr: ${currentRecord.produktNr}` : '',
+      currentRecord.revision ? `Rev: ${currentRecord.revision}` : '',
+      currentRecord.version ? `Ver: ${currentRecord.version}` : '',
+      currentRecord.datum ? `Datum: ${currentRecord.datum}` : ''
+    ].filter(Boolean).join('   ·   ');
+    pdf.text(headLine, margin, y);
+    y += 8;
+
+    // Divider
+    pdf.setDrawColor(10,10,10);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, y, W-margin, y);
+    y += 7;
+
+    // Changes
+    if ((currentRecord.changes||[]).length > 0) {
+      pdf.setFont('helvetica','bold');
+      pdf.setFontSize(11);
+      pdf.setTextColor(10,10,10);
+      pdf.text('ÄNDERUNGSHISTORIE', margin, y);
+      y += 6;
+      for (const c of currentRecord.changes) {
+        checkNewPage(8);
+        pdf.setFont('helvetica','bold');
+        pdf.setFontSize(9);
+        pdf.setTextColor(10,10,10);
+        pdf.text(c.date, margin, y);
+        pdf.setFont('helvetica','normal');
+        pdf.setTextColor(60,60,60);
+        const lines = pdf.splitTextToSize(c.text, W - margin*2 - 28);
+        pdf.text(lines, margin+28, y);
+        y += lines.length * 5 + 3;
+      }
+      y += 4;
+      checkNewPage();
+      pdf.setDrawColor(200,200,200);
+      pdf.line(margin, y, W-margin, y);
+      y += 6;
+    }
+
+    // Steps
+    pdf.setFont('helvetica','bold');
+    pdf.setFontSize(11);
+    pdf.setTextColor(10,10,10);
+    pdf.text('MONTAGESCHRITTE', margin, y);
+    y += 7;
+
+    for (let i = 0; i < (currentRecord.steps||[]).length; i++) {
+      const s = currentRecord.steps[i];
+      checkNewPage(16);
+
+      // Step number box
+      pdf.setFillColor(10,10,10);
+      pdf.roundedRect(margin, y-4, 8, 8, 1, 1, 'F');
+      pdf.setFont('helvetica','bold');
+      pdf.setFontSize(9);
+      pdf.setTextColor(255,255,255);
+      pdf.text(String(i+1), margin+4, y+0.5, { align:'center' });
+
+      // Label
+      pdf.setFont('helvetica','bold');
+      pdf.setFontSize(11);
+      pdf.setTextColor(10,10,10);
+      pdf.text(s.label||'Schritt', margin+11, y+1);
+
+      // Date
+      pdf.setFont('helvetica','normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(150,150,150);
+      pdf.text(s.date||'', W-margin, y+1, { align:'right' });
+      y += 8;
+
+      // Description
+      if (s.desc) {
+        checkNewPage(8);
+        pdf.setFont('helvetica','normal');
+        pdf.setFontSize(10);
+        pdf.setTextColor(60,60,60);
+        const lines = pdf.splitTextToSize(s.desc, W - margin*2 - 11);
+        for (const line of lines) {
+          checkNewPage(6);
+          pdf.text(line, margin+11, y);
+          y += 5;
+        }
+        y += 2;
+      }
+
+      // Photos
+      if ((s.photos||[]).length > 0) {
+        let px = margin + 11;
+        for (const photo of s.photos) {
+          try {
+            const imgData = await urlToBase64(photo.url);
+            const imgW = 50, imgH = 36;
+            if (px + imgW > W - margin) { px = margin+11; y += imgH + 4; }
+            checkNewPage(imgH + 6);
+            pdf.addImage(imgData, 'JPEG', px, y, imgW, imgH);
+            px += imgW + 4;
+          } catch(e) { console.warn('Photo in PDF failed', e); }
+        }
+        if (px > margin+11) y += 38;
+      }
+
+      // PDF items (listed as links, can't embed easily)
+      if ((s.pdfs||[]).length > 0) {
+        checkNewPage(7);
+        pdf.setFont('helvetica','italic');
+        pdf.setFontSize(9);
+        pdf.setTextColor(100,100,100);
+        s.pdfs.forEach(p => {
+          pdf.text('📎 ' + p.name, margin+11, y);
+          y += 5;
+        });
+      }
+
+      y += 4;
+      checkNewPage();
+      pdf.setDrawColor(230,230,230);
+      pdf.line(margin+11, y, W-margin, y);
+      y += 6;
+    }
+
+    addFooter(pageNum, pageNum);
+
+    // Build filename
+    const prodName = (currentRecord.produkt||'Anleitung').slice(0,10).replace(/\s+/g,'_');
+    const latestChange = (currentRecord.changes||[]).map(c=>c.date).sort().reverse()[0] || todayStr();
+    const datePart = latestChange.replace(/\./g,'-');
+    const fileName = `${prodName}_${datePart}.pdf`;
+
+    // Save to blob and upload to Firebase Storage
+    const pdfBlob = pdf.output('blob');
+    try {
+      const storageRef = ref(storage, `montageanleitung/exports/${fileName}`);
+      await uploadBytes(storageRef, pdfBlob);
+      const url = await getDownloadURL(storageRef);
+      currentRecord.exportedPdfUrl = url;
+      currentRecord.exportedPdfName = fileName;
+      const idx = records.findIndex(r => r.id === currentId);
+      if (idx >= 0) records[idx] = currentRecord;
+      else records.push(currentRecord);
+      await pushToFirebase(true);
+      toast('✅ PDF erstellt: ' + fileName);
+    } catch(e) {
+      console.warn('PDF Storage upload failed', e);
+    }
+
+    // Also trigger download
+    pdf.save(fileName);
+
+  } catch(e) {
+    toast('❌ PDF-Fehler: ' + e.message);
+    console.error(e);
+  }
+};
+
+async function urlToBase64(url) {
+  const resp = await fetch(url);
+  const blob = await resp.blob();
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(blob);
+  });
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+await pullFromFirebase();
+
+</script>
+</body>
+</html>
