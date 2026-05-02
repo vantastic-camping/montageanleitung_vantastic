@@ -489,6 +489,39 @@
     transition: width 0.3s; width: 0%;
   }
 
+  /* ── HEAD ATTACHMENTS ── */
+  .head-attachments {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1.5px solid var(--gray-100);
+  }
+  .head-attach-label {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--gray-400); margin-bottom: 10px;
+    display: block;
+  }
+  .head-attach-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .head-attach-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .head-attach-img {
+    width: 100px; height: 76px; object-fit: cover;
+    border-radius: 4px; border: 2px solid var(--gray-200);
+    cursor: pointer; transition: transform 0.2s, border-color 0.2s;
+    position: relative;
+  }
+  .head-attach-img:hover { transform: scale(1.04); border-color: var(--black); }
+  .head-attach-item {
+    position: relative; display: inline-flex; align-items: center;
+  }
+  .head-attach-remove {
+    position: absolute; top: -6px; right: -6px;
+    width: 20px; height: 20px;
+    background: var(--danger); color: white;
+    border: none; border-radius: 50%;
+    font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
     .app-header { padding: 0 16px; }
@@ -561,6 +594,7 @@
       <div class="detail-header-right">
         <button class="btn btn-success" onclick="saveRecord()">💾 Speichern</button>
         <button class="btn" onclick="exportPDF()">📄 PDF exportieren</button>
+        <button class="btn" onclick="duplicateRecord()">⧉ Duplizieren</button>
         <button class="btn btn-danger btn-sm" onclick="deleteRecord()">🗑 Löschen</button>
       </div>
     </div>
@@ -589,6 +623,19 @@
           <label>Erstellungsdatum</label>
           <input type="date" id="fDatum" oninput="onFieldChange()">
         </div>
+      </div>
+
+      <!-- HEAD ATTACHMENTS: Bilder & PDFs -->
+      <div class="head-attachments">
+        <span class="head-attach-label">Anhänge (Kopfdaten)</span>
+        <div class="head-attach-actions">
+          <button class="btn btn-sm" onclick="document.getElementById('headImageInput').click()">🖼 Bild upload</button>
+          <button class="btn btn-sm" onclick="document.getElementById('headPdfInput').click()">📎 PDF upload</button>
+        </div>
+        <input type="file" id="headImageInput" accept="image/*" multiple style="display:none" onchange="handleHeadImageUpload(this)">
+        <input type="file" id="headPdfInput" accept="application/pdf" multiple style="display:none" onchange="handleHeadPdfUpload(this)">
+        <div class="head-attach-grid" id="headAttachGrid"></div>
+        <div class="progress-bar" id="headProgress" style="display:none"><div class="progress-fill" id="headProgressFill"></div></div>
       </div>
     </div>
 
@@ -871,6 +918,7 @@ function fillDetailForm() {
   set('fRevision', currentRecord.revision);
   set('fVersion', currentRecord.version);
   set('fDatum', currentRecord.datum);
+  renderHeadAttachments();
 }
 
 window.onFieldChange = function() {
@@ -900,6 +948,104 @@ window.deleteRecord = async function() {
   localStorage.setItem('montageanleitung_cache', JSON.stringify(records));
   goBack();
   toast('🗑 Gelöscht');
+};
+
+window.duplicateRecord = async function() {
+  if (!confirm('Datensatz vollständig duplizieren?')) return;
+  onFieldChange();
+  const newId = uid();
+  const clone = JSON.parse(JSON.stringify(currentRecord));
+  clone.id = newId;
+  clone.produkt = (clone.produkt || 'Kopie') + ' (Kopie)';
+  clone.datum = todayISO();
+  clone.exportedPdfUrl = null;
+  clone.exportedPdfName = null;
+  // Add a change entry noting the duplication
+  if (!clone.changes) clone.changes = [];
+  clone.changes.unshift({ date: todayStr(), text: `Dupliziert von "${currentRecord.produkt || 'Original'}"` });
+  records.push(clone);
+  records.sort((a,b) => (a.produkt||'').localeCompare(b.produkt||''));
+  await pushToFirebase(false);
+  toast('⧉ Dupliziert – öffne Kopie…');
+  // Open the duplicate
+  currentId = newId;
+  currentRecord = clone;
+  showDetailPage();
+};
+
+// ── HEAD ATTACHMENTS ──────────────────────────────────────────────────────
+function renderHeadAttachments() {
+  const grid = document.getElementById('headAttachGrid');
+  if (!grid) return;
+  const attachments = currentRecord.headAttachments || [];
+  if (attachments.length === 0) { grid.innerHTML = ''; return; }
+  grid.innerHTML = attachments.map((a, i) => {
+    if (a.type === 'image') {
+      return `<div class="head-attach-item">
+        <img class="head-attach-img" src="${a.url}" alt="${a.name}" onclick="openPreview('img','${a.url}')">
+        <button class="head-attach-remove" onclick="removeHeadAttachment(${i})">×</button>
+      </div>`;
+    } else {
+      return `<div class="head-attach-item">
+        <span class="pdf-item" onclick="openPreview('pdf','${a.url}')">📄 ${a.name}</span>
+        <button class="head-attach-remove" style="position:relative;top:0;right:0;margin-left:4px;" onclick="removeHeadAttachment(${i})">×</button>
+      </div>`;
+    }
+  }).join('');
+}
+
+window.removeHeadAttachment = function(i) {
+  if (!currentRecord.headAttachments) return;
+  currentRecord.headAttachments.splice(i, 1);
+  renderHeadAttachments();
+  scheduleSync();
+};
+
+window.handleHeadImageUpload = async function(input) {
+  const files = Array.from(input.files);
+  const prog = document.getElementById('headProgress');
+  const fill = document.getElementById('headProgressFill');
+  if (prog) prog.style.display = 'block';
+  if (!currentRecord.headAttachments) currentRecord.headAttachments = [];
+  for (let i = 0; i < files.length; i++) {
+    try {
+      const compressed = await compressImage(files[i], 100 * 1024);
+      const storageRef = ref(storage, `montageanleitung/head-images/${uid()}_${files[i].name}`);
+      await uploadBytes(storageRef, compressed.blob);
+      const url = await getDownloadURL(storageRef);
+      currentRecord.headAttachments.push({ type: 'image', url, name: files[i].name });
+    } catch(e) { console.warn('Head image upload failed', e); }
+    if (fill) fill.style.width = ((i+1)/files.length*100) + '%';
+  }
+  if (prog) prog.style.display = 'none';
+  input.value = '';
+  renderHeadAttachments();
+  scheduleSync();
+  toast('✅ Bild(er) hinzugefügt');
+};
+
+window.handleHeadPdfUpload = async function(input) {
+  const files = Array.from(input.files);
+  const prog = document.getElementById('headProgress');
+  const fill = document.getElementById('headProgressFill');
+  if (prog) prog.style.display = 'block';
+  if (!currentRecord.headAttachments) currentRecord.headAttachments = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file.size > 1024 * 1024) { toast('⚠ PDF zu groß (max. 1 MB): ' + file.name); continue; }
+    try {
+      const storageRef = ref(storage, `montageanleitung/head-pdfs/${uid()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      currentRecord.headAttachments.push({ type: 'pdf', url, name: file.name });
+    } catch(e) { console.warn('Head PDF upload failed', e); }
+    if (fill) fill.style.width = ((i+1)/files.length*100) + '%';
+  }
+  if (prog) prog.style.display = 'none';
+  input.value = '';
+  renderHeadAttachments();
+  scheduleSync();
+  toast('✅ PDF hinzugefügt');
 };
 
 // ── CHANGE HISTORY ────────────────────────────────────────────────────────
@@ -1267,6 +1413,30 @@ window.exportPDF = async function() {
     ].filter(Boolean).join('   ·   ');
     pdf.text(headLine, margin, y);
     y += 8;
+
+    // Head attachments (images only in PDF)
+    if ((currentRecord.headAttachments||[]).length > 0) {
+      const headImgs = currentRecord.headAttachments.filter(a => a.type === 'image');
+      const headPdfs = currentRecord.headAttachments.filter(a => a.type === 'pdf');
+      if (headImgs.length > 0) {
+        let px = margin;
+        for (const a of headImgs) {
+          try {
+            const imgData = await urlToBase64(a.url);
+            const imgW = 40, imgH = 30;
+            if (px + imgW > W - margin) { px = margin; y += imgH + 4; }
+            checkNewPage(imgH + 6);
+            pdf.addImage(imgData, 'JPEG', px, y, imgW, imgH);
+            px += imgW + 4;
+          } catch(e) {}
+        }
+        if (px > margin) y += 34;
+      }
+      if (headPdfs.length > 0) {
+        pdf.setFont('helvetica','italic'); pdf.setFontSize(9); pdf.setTextColor(100,100,100);
+        headPdfs.forEach(a => { checkNewPage(6); pdf.text('📎 ' + a.name, margin, y); y += 5; });
+      }
+    }
 
     // Divider
     pdf.setDrawColor(10,10,10);
