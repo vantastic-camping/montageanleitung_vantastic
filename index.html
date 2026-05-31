@@ -301,9 +301,18 @@
     border-radius: var(--radius);
     margin-bottom: 16px;
     overflow: hidden;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s, opacity 0.15s;
   }
   .step-card:hover { border-color: var(--black); }
+  .step-card.drag-over {
+    border-color: var(--black);
+    border-style: dashed;
+    box-shadow: 0 0 0 3px rgba(0,0,0,0.08);
+  }
+  .step-card.dragging {
+    opacity: 0.4;
+    box-shadow: var(--shadow-lg);
+  }
 
   .step-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -312,6 +321,28 @@
     border-bottom: 1.5px solid var(--gray-200);
   }
   .step-header-left { display: flex; align-items: center; gap: 12px; }
+
+  /* Drag handle */
+  .drag-handle {
+    cursor: grab; color: var(--gray-400); font-size: 18px;
+    padding: 0 4px; user-select: none; line-height: 1;
+    transition: color 0.15s;
+  }
+  .drag-handle:active { cursor: grabbing; }
+  .drag-handle:hover { color: var(--black); }
+
+  /* Move buttons (↑↓) — visible on touch devices, hidden on hover-capable devices */
+  .move-btns { display: flex; flex-direction: column; gap: 2px; }
+  .move-btn {
+    background: none; border: 1.5px solid var(--gray-200);
+    border-radius: 4px; cursor: pointer; font-size: 12px;
+    width: 26px; height: 22px; display: flex; align-items: center;
+    justify-content: center; color: var(--gray-600);
+    transition: all 0.15s; line-height: 1;
+  }
+  .move-btn:hover { background: var(--black); color: var(--white); border-color: var(--black); }
+  .move-btn:disabled { opacity: 0.25; cursor: default; }
+  .move-btn:disabled:hover { background: none; color: var(--gray-600); border-color: var(--gray-200); }
   .step-number {
     width: 32px; height: 32px;
     background: var(--black); color: var(--white);
@@ -1101,6 +1132,8 @@ window.saveChange = function() {
 };
 
 // ── STEPS ─────────────────────────────────────────────────────────────────
+let dragSrcIndex = null; // for drag & drop reordering
+
 function renderSteps() {
   const container = document.getElementById('stepsList');
   if (!container) return;
@@ -1111,23 +1144,33 @@ function renderSteps() {
   }
   container.innerHTML = steps.map((s, i) => {
     const photos = (s.photos||[]).map(p => {
-      // Use session cache dataUrl if available, else Firebase Storage URL directly
       const src = photoCache.get(p.url) || p.url;
       return `<img class="photo-thumb" src="${src}" alt="Foto" onclick="openPreview('img','${p.url}')">`;
     }).join('');
     const pdfs = (s.pdfs||[]).map(p =>
       `<span class="pdf-item" onclick="openPreview('pdf','${p.url}')">📄 ${p.name}</span>`
     ).join('');
-    return `<div class="step-card">
+    const total = steps.length;
+    return `<div class="step-card" draggable="true" data-index="${i}"
+        ondragstart="onStepDragStart(event,${i})"
+        ondragover="onStepDragOver(event)"
+        ondrop="onStepDrop(event,${i})"
+        ondragleave="onStepDragLeave(event)"
+        ondragend="onStepDragEnd(event)">
       <div class="step-header">
         <div class="step-header-left">
+          <span class="drag-handle" title="Ziehen zum Verschieben">⠿</span>
           <div class="step-number">${i+1}</div>
           <div>
             <div class="step-label">${s.label||'Schritt'}</div>
             <div class="step-date">${s.date||''}</div>
           </div>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div class="move-btns">
+            <button class="move-btn" onclick="moveStep(${i},-1)" ${i===0?'disabled':''} title="Nach oben">▲</button>
+            <button class="move-btn" onclick="moveStep(${i},+1)" ${i===total-1?'disabled':''} title="Nach unten">▼</button>
+          </div>
           <button class="btn btn-sm" onclick="editStep(${i})">✏ Bearbeiten</button>
           <button class="btn btn-sm btn-danger" onclick="deleteStep(${i})">🗑</button>
         </div>
@@ -1140,6 +1183,48 @@ function renderSteps() {
     </div>`;
   }).join('');
 }
+
+// ── Move step by index delta (+1 = down, -1 = up) ──────────────────────────
+window.moveStep = function(i, delta) {
+  const steps = currentRecord.steps;
+  const j = i + delta;
+  if (j < 0 || j >= steps.length) return;
+  [steps[i], steps[j]] = [steps[j], steps[i]];
+  renderSteps();
+  scheduleSync();
+};
+
+// ── Drag & Drop handlers ───────────────────────────────────────────────────
+window.onStepDragStart = function(e, i) {
+  dragSrcIndex = i;
+  e.dataTransfer.effectAllowed = 'move';
+  e.currentTarget.classList.add('dragging');
+};
+window.onStepDragOver = function(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+};
+window.onStepDragLeave = function(e) {
+  e.currentTarget.classList.remove('drag-over');
+};
+window.onStepDrop = function(e, targetIndex) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (dragSrcIndex === null || dragSrcIndex === targetIndex) return;
+  const steps = currentRecord.steps;
+  const moved = steps.splice(dragSrcIndex, 1)[0];
+  steps.splice(targetIndex, 0, moved);
+  dragSrcIndex = null;
+  renderSteps();
+  scheduleSync();
+};
+window.onStepDragEnd = function(e) {
+  dragSrcIndex = null;
+  document.querySelectorAll('.step-card').forEach(c => {
+    c.classList.remove('dragging', 'drag-over');
+  });
+};
 
 window.openStepModal = function() {
   stepEditIndex = null;
