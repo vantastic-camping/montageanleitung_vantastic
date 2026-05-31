@@ -334,17 +334,22 @@
 
   /* ── PHOTOS ── */
   .photo-grid {
-    display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
+    display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; align-items: flex-start;
   }
   .photo-thumb {
-    width: 90px; height: 70px;
-    object-fit: cover;
+    /* Natural aspect ratio — no cropping, no stretching */
+    max-width: 280px;
+    max-height: 220px;
+    width: auto;
+    height: auto;
+    display: block;
+    object-fit: contain;
     border-radius: 4px;
     border: 2px solid var(--gray-200);
     cursor: pointer;
-    transition: transform 0.2s, border-color 0.2s;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
   }
-  .photo-thumb:hover { transform: scale(1.05); border-color: var(--black); }
+  .photo-thumb:hover { transform: scale(1.02); border-color: var(--black); box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
 
   .pdf-item {
     display: inline-flex; align-items: center; gap: 6px;
@@ -1094,9 +1099,12 @@ function renderSteps() {
     return;
   }
   container.innerHTML = steps.map((s, i) => {
-    const photos = (s.photos||[]).map(p =>
-      `<img class="photo-thumb" src="${p.url}" alt="Foto" onclick="openPreview('img','${p.url}')">`
-    ).join('');
+    const photos = (s.photos||[]).map(p => {
+      // Use stored dataUrl for display — avoids CORS issues with Firebase URLs
+      const src = p.dataUrl || p.url;
+      const previewUrl = p.url; // always use storage URL for full-res preview
+      return `<img class="photo-thumb" src="${src}" alt="Foto" onclick="openPreview('img','${previewUrl}')">`;
+    }).join('');
     const pdfs = (s.pdfs||[]).map(p =>
       `<span class="pdf-item" onclick="openPreview('pdf','${p.url}')">📄 ${p.name}</span>`
     ).join('');
@@ -1478,9 +1486,83 @@ window.exportPDF = async function() {
     pdf.text('MONTAGESCHRITTE', margin, y);
     y += 7;
 
+    // ── Helper: get image natural dimensions from dataUrl ──────────────────
+    function getImgDimensions(dataUrl) {
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => resolve({ w: 1, h: 1 });
+        img.src = dataUrl;
+      });
+    }
+
+    // ── Helper: calculate display dimensions keeping aspect ratio ───────────
+    // maxW and maxH in mm, returns { dispW, dispH }
+    function fitImage(natW, natH, maxW, maxH) {
+      const ratio = natW / natH;
+      let dispW = maxW;
+      let dispH = dispW / ratio;
+      if (dispH > maxH) { dispH = maxH; dispW = dispH * ratio; }
+      return { dispW, dispH };
+    }
+
+    // ── Helper: estimate total height of one step (in mm) ───────────────────
+    async function estimateStepHeight(s) {
+      const textW = W - margin*2 - 11;
+      let h = 10; // header row (number + label + date)
+
+      // description
+      if (s.desc) {
+        const paragraphs = s.desc.split('\n');
+        let lineCount = 0;
+        for (const para of paragraphs) {
+          const lines = para.trim() === '' ? 1 : pdf.splitTextToSize(para, textW).length;
+          lineCount += lines;
+        }
+        h += lineCount * 5 + 4;
+      }
+
+      // photos — each on its own line, natural aspect ratio
+      if ((s.photos||[]).length > 0) {
+        const contentW = W - margin - 11;
+        const maxImgH = 120;
+        const PX_TO_MM = 0.264583;
+        for (const photo of s.photos) {
+          try {
+            const imgData = photo.dataUrl || null;
+            if (!imgData) { h += maxImgH + 5; continue; }
+            const { w: nw, h: nh } = await getImgDimensions(imgData);
+            const ratio = nw / nh;
+            let dispW = Math.min(contentW, nw * PX_TO_MM);
+            let dispH = dispW / ratio;
+            if (dispH > maxImgH) { dispH = maxImgH; }
+            h += dispH + 5;
+          } catch(e) { h += maxImgH + 5; }
+        }
+        h += 3;
+      }
+
+      // pdfs
+      if ((s.pdfs||[]).length > 0) h += s.pdfs.length * 6 + 2;
+
+      h += 10; // bottom divider + spacing
+      return h;
+    }
+
     for (let i = 0; i < (currentRecord.steps||[]).length; i++) {
       const s = currentRecord.steps[i];
-      checkNewPage(16);
+
+      // ── Pre-calculate step height and force new page if it doesn't fit ──
+      const stepH = await estimateStepHeight(s);
+      const usableH = H - 20 - 26; // page height minus footer and header
+      if (stepH <= usableH && y + stepH > H - 20) {
+        // entire step fits on one page but not here — start fresh page
+        addFooter(pageNum, '?');
+        pdf.addPage();
+        pageNum++;
+        addHeader();
+        y = 26;
+      }
 
       // Step number box
       pdf.setFillColor(10,10,10);
@@ -1505,16 +1587,13 @@ window.exportPDF = async function() {
 
       // Description — respect line breaks
       if (s.desc) {
-        checkNewPage(8);
         pdf.setFont('helvetica','normal');
         pdf.setFontSize(10);
         pdf.setTextColor(60,60,60);
-        // Split on actual newlines first, then wrap each paragraph
         const paragraphs = s.desc.split('\n');
         for (const para of paragraphs) {
           const lines = para.trim() === '' ? [''] : pdf.splitTextToSize(para, W - margin*2 - 11);
           for (const line of lines) {
-            checkNewPage(6);
             pdf.text(line, margin+11, y);
             y += 5;
           }
@@ -1522,36 +1601,42 @@ window.exportPDF = async function() {
         y += 2;
       }
 
-      // Photos
+      // Photos — natural aspect ratio from stored dataUrl dimensions
       if ((s.photos||[]).length > 0) {
-        const imgW = 52, imgH = 38;
-        const imgsPerRow = Math.floor((W - margin - 11) / (imgW + 4));
-        let col = 0;
-        let rowStartY = y;
-        checkNewPage(imgH + 8);
-        rowStartY = y;
+        // Max display width per image: full content width. Max height: 120mm.
+        const contentW = W - margin - 11;   // available mm from indent to right margin
+        const maxImgH = 120;                // max height per image in mm
+        // 1px ≈ 0.264583 mm at 96 dpi — we use dataUrl pixel dimensions
+        const PX_TO_MM = 0.264583;
+
         for (const photo of s.photos) {
           try {
-            // Prefer stored dataUrl (avoids CORS), fall back to urlToBase64
             const imgData = photo.dataUrl || await urlToBase64(photo.url);
-            const px = margin + 11 + col * (imgW + 4);
-            pdf.addImage(imgData, 'JPEG', px, rowStartY, imgW, imgH);
-            col++;
-            if (col >= imgsPerRow) {
-              col = 0;
-              y = rowStartY + imgH + 4;
-              checkNewPage(imgH + 8);
-              rowStartY = y;
+
+            // Read natural pixel dimensions from the dataUrl via Image element
+            const { w: natW, h: natH } = await getImgDimensions(imgData);
+
+            // Scale so image fits within contentW × maxImgH, preserving ratio
+            const ratio = natW / natH;
+            let dispW = Math.min(contentW, natW * PX_TO_MM);
+            let dispH = dispW / ratio;
+            if (dispH > maxImgH) {
+              dispH = maxImgH;
+              dispW = dispH * ratio;
             }
-          } catch(e) { console.warn('Photo in PDF failed', e); col++; }
+            // Clamp to content width just in case
+            if (dispW > contentW) { dispW = contentW; dispH = dispW / ratio; }
+
+            // Each image on its own line — clean, unambiguous layout
+            pdf.addImage(imgData, 'JPEG', margin + 11, y, dispW, dispH);
+            y += dispH + 5;
+          } catch(e) { console.warn('Photo in PDF failed', e); }
         }
-        // advance y past the last (possibly partial) row
-        y = rowStartY + imgH + 6;
+        y += 3;
       }
 
-      // PDF items (listed as links, can't embed easily)
+      // PDF attachments
       if ((s.pdfs||[]).length > 0) {
-        checkNewPage(7);
         pdf.setFont('helvetica','italic');
         pdf.setFontSize(9);
         pdf.setTextColor(100,100,100);
@@ -1559,12 +1644,13 @@ window.exportPDF = async function() {
           pdf.text('📎 ' + p.name, margin+11, y);
           y += 5;
         });
+        y += 2;
       }
 
       y += 4;
-      checkNewPage();
       pdf.setDrawColor(230,230,230);
-      pdf.line(margin+11, y, W-margin, y);
+      pdf.setLineWidth(0.3);
+      pdf.line(margin, y, W-margin, y);
       y += 6;
     }
 
