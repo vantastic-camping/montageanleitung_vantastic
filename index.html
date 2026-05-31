@@ -337,13 +337,10 @@
     display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; align-items: flex-start;
   }
   .photo-thumb {
-    /* Natural aspect ratio — no cropping, no stretching */
-    max-width: 280px;
-    max-height: 220px;
-    width: auto;
+    /* Fixed width 160px, height scales automatically — no cropping ever */
+    width: 160px;
     height: auto;
     display: block;
-    object-fit: contain;
     border-radius: 4px;
     border: 2px solid var(--gray-200);
     cursor: pointer;
@@ -1591,15 +1588,15 @@ window.exportPDF = async function() {
       // photos — 3 per row, 50mm fixed width, height proportional
       if ((s.photos||[]).length > 0) {
         const imgFixedW = 50;
-        const rowGap    = 4;
+        const rowGap    = 5;
         const cols      = 3;
-        // Process rows
         for (let r = 0; r < s.photos.length; r += cols) {
           const rowPhotos = s.photos.slice(r, r + cols);
           let rowH = 0;
           for (const photo of rowPhotos) {
             try {
-              let natW = photo.natW, natH = photo.natH;
+              let natW = (photo.natW > 0) ? photo.natW : null;
+              let natH = (photo.natH > 0) ? photo.natH : null;
               if (!natW || !natH) { rowH = Math.max(rowH, 40); continue; }
               const dispH = imgFixedW / (natW / natH);
               rowH = Math.max(rowH, dispH);
@@ -1674,23 +1671,66 @@ window.exportPDF = async function() {
       if ((s.photos||[]).length > 0) {
         const imgFixedW = 50;   // fixed width per image in mm
         const colGap    = 4;    // gap between images in mm
-        const rowGap    = 4;    // gap between rows in mm
+        const rowGap    = 5;    // gap between rows in mm
         const startX    = margin + 11;
         const cols      = 3;
 
-        // Pre-load all image data and compute heights
+        // getDimsFromDataUrl: parse pixel dimensions directly from base64 header
+        // — synchronous, no Image() element needed, no CORS, no async timing issues
+        function getDimsFromDataUrl(dataUrl) {
+          try {
+            const header = dataUrl.substring(0, 32);
+            if (dataUrl.startsWith('data:image/png')) {
+              // PNG: width at bytes 16-19, height at 20-23 in IHDR chunk
+              const bin = atob(dataUrl.split(',')[1].substring(0, 32));
+              const w = (bin.charCodeAt(16)<<24|bin.charCodeAt(17)<<16|bin.charCodeAt(18)<<8|bin.charCodeAt(19))>>>0;
+              const h = (bin.charCodeAt(20)<<24|bin.charCodeAt(21)<<16|bin.charCodeAt(22)<<8|bin.charCodeAt(23))>>>0;
+              if (w > 0 && h > 0) return { w, h };
+            }
+            if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) {
+              // JPEG: scan for SOF0/SOF2 marker (FF C0 / FF C2)
+              const bin = atob(dataUrl.split(',')[1].substring(0, 1200));
+              for (let i = 0; i < bin.length - 8; i++) {
+                if (bin.charCodeAt(i) === 0xFF &&
+                    (bin.charCodeAt(i+1) === 0xC0 || bin.charCodeAt(i+1) === 0xC2)) {
+                  const h = (bin.charCodeAt(i+5)<<8 | bin.charCodeAt(i+6));
+                  const w = (bin.charCodeAt(i+7)<<8 | bin.charCodeAt(i+8));
+                  if (w > 0 && h > 0) return { w, h };
+                }
+              }
+            }
+          } catch(e) {}
+          return null;
+        }
+
+        // Pre-load all image data and compute display sizes
         const photoItems = [];
         for (const photo of s.photos) {
           try {
             const imgData = photo.dataUrl || await urlToBase64(photo.url);
-            let natW = photo.natW, natH = photo.natH;
+
+            // 1. Try stored natW/natH (most reliable — EXIF-corrected at upload time)
+            let natW = (photo.natW > 0) ? photo.natW : null;
+            let natH = (photo.natH > 0) ? photo.natH : null;
+
+            // 2. Try parsing dimensions directly from dataUrl binary header
+            if (!natW || !natH) {
+              const parsed = getDimsFromDataUrl(imgData);
+              if (parsed) { natW = parsed.w; natH = parsed.h; }
+            }
+
+            // 3. Fall back to async Image element
             if (!natW || !natH) {
               const dims = await getImgDimensions(imgData);
               natW = dims.w; natH = dims.h;
             }
-            const ratio  = natW / natH;
-            const dispW  = imgFixedW;
-            const dispH  = dispW / ratio;  // height from ratio, width is always 50mm
+
+            // Guard against degenerate ratios
+            if (!natW || !natH || natW <= 0 || natH <= 0) { natW = 1; natH = 1; }
+
+            const ratio = natW / natH;
+            const dispW = imgFixedW;
+            const dispH = dispW / ratio;
             photoItems.push({ imgData, dispW, dispH });
           } catch(e) { console.warn('Photo load failed', e); }
         }
