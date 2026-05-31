@@ -1588,22 +1588,24 @@ window.exportPDF = async function() {
         h += lineCount * 5 + 4;
       }
 
-      // photos — each on its own line, natural aspect ratio
+      // photos — 3 per row, 50mm fixed width, height proportional
       if ((s.photos||[]).length > 0) {
-        const contentW = W - margin - 11;
-        const maxImgH = 120;
-        const PX_TO_MM = 0.264583;
-        for (const photo of s.photos) {
-          try {
-            const imgData = photo.dataUrl || null;
-            if (!imgData) { h += maxImgH + 5; continue; }
-            const { w: nw, h: nh } = await getImgDimensions(imgData);
-            const ratio = nw / nh;
-            let dispW = Math.min(contentW, nw * PX_TO_MM);
-            let dispH = dispW / ratio;
-            if (dispH > maxImgH) { dispH = maxImgH; }
-            h += dispH + 5;
-          } catch(e) { h += maxImgH + 5; }
+        const imgFixedW = 50;
+        const rowGap    = 4;
+        const cols      = 3;
+        // Process rows
+        for (let r = 0; r < s.photos.length; r += cols) {
+          const rowPhotos = s.photos.slice(r, r + cols);
+          let rowH = 0;
+          for (const photo of rowPhotos) {
+            try {
+              let natW = photo.natW, natH = photo.natH;
+              if (!natW || !natH) { rowH = Math.max(rowH, 40); continue; }
+              const dispH = imgFixedW / (natW / natH);
+              rowH = Math.max(rowH, dispH);
+            } catch(e) { rowH = Math.max(rowH, 40); }
+          }
+          h += rowH + rowGap;
         }
         h += 3;
       }
@@ -1668,38 +1670,42 @@ window.exportPDF = async function() {
         y += 2;
       }
 
-      // Photos — use stored natW/natH for exact aspect ratio, no distortion
+      // Photos — 3 per row, each exactly 50mm wide, height proportional
       if ((s.photos||[]).length > 0) {
-        const contentW = W - margin - 11;  // usable mm width
-        const maxPrintH = 160;             // max mm height per photo on page
+        const imgFixedW = 50;   // fixed width per image in mm
+        const colGap    = 4;    // gap between images in mm
+        const rowGap    = 4;    // gap between rows in mm
+        const startX    = margin + 11;
+        const cols      = 3;
 
+        // Pre-load all image data and compute heights
+        const photoItems = [];
         for (const photo of s.photos) {
           try {
             const imgData = photo.dataUrl || await urlToBase64(photo.url);
-
-            // Use stored pixel dimensions (EXIF-corrected). Fall back to reading from image.
             let natW = photo.natW, natH = photo.natH;
             if (!natW || !natH) {
               const dims = await getImgDimensions(imgData);
               natW = dims.w; natH = dims.h;
             }
+            const ratio  = natW / natH;
+            const dispW  = imgFixedW;
+            const dispH  = dispW / ratio;  // height from ratio, width is always 50mm
+            photoItems.push({ imgData, dispW, dispH });
+          } catch(e) { console.warn('Photo load failed', e); }
+        }
 
-            // Scale to fit content width, preserve ratio, cap height
-            const ratio = natW / natH;
-            let dispW = contentW;            // fill the content width by default
-            let dispH = dispW / ratio;
-            if (dispH > maxPrintH) {         // too tall — constrain by height instead
-              dispH = maxPrintH;
-              dispW = dispH * ratio;
-            }
-            if (dispW > contentW) {          // safety clamp
-              dispW = contentW;
-              dispH = dispW / ratio;
-            }
+        // Render row by row
+        for (let r = 0; r < photoItems.length; r += cols) {
+          const rowItems = photoItems.slice(r, r + cols);
+          const rowH = Math.max(...rowItems.map(p => p.dispH));
 
-            pdf.addImage(imgData, 'JPEG', margin + 11, y, dispW, dispH);
-            y += dispH + 6;
-          } catch(e) { console.warn('Photo in PDF failed', e); }
+          for (let c = 0; c < rowItems.length; c++) {
+            const p = rowItems[c];
+            const x = startX + c * (imgFixedW + colGap);
+            pdf.addImage(p.imgData, 'JPEG', x, y, p.dispW, p.dispH);
+          }
+          y += rowH + rowGap;
         }
         y += 3;
       }
