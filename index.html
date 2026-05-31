@@ -710,7 +710,7 @@
             <button class="btn btn-sm" onclick="document.getElementById('photoInput').click()">📁 Aus Datei auswählen</button>
             <button class="btn btn-sm" onclick="document.getElementById('cameraInput').click()">📷 Foto aufnehmen</button>
           </div>
-          <div style="font-size:12px;color:var(--gray-400);">Fotos werden auf max. 100 kB komprimiert</div>
+          <div style="font-size:12px;color:var(--gray-400);">Fotos werden auf max. 50 kB komprimiert</div>
         </div>
         <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="handlePhotoUpload(this)">
         <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoUpload(this)">
@@ -720,10 +720,10 @@
 
       <!-- PDFs -->
       <div class="form-group">
-        <label>PDF-Anhänge (max. 1 MB nach Komprimierung)</label>
+        <label>PDF-Anhänge (max. 150 kB)</label>
         <div class="upload-area">
           <button class="btn btn-sm" onclick="document.getElementById('pdfInput').click()">📎 PDF hochladen</button>
-          <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">Max. 1 MB</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:8px;">Max. 150 kB</div>
         </div>
         <input type="file" id="pdfInput" accept="application/pdf" multiple style="display:none" onchange="handlePDFUpload(this)">
         <div id="pdfPreviewList" style="margin-top:10px;"></div>
@@ -1023,7 +1023,7 @@ window.handleHeadImageUpload = async function(input) {
   if (!currentRecord.headAttachments) currentRecord.headAttachments = [];
   for (let i = 0; i < files.length; i++) {
     try {
-      const compressed = await compressImage(files[i], 100 * 1024);
+      const compressed = await compressImage(files[i], 50 * 1024);
       const storageRef = ref(storage, `montageanleitung/head-images/${uid()}_${files[i].name}`);
       await uploadBytes(storageRef, compressed.blob);
       const url = await getDownloadURL(storageRef);
@@ -1048,7 +1048,7 @@ window.handleHeadPdfUpload = async function(input) {
   if (!currentRecord.headAttachments) currentRecord.headAttachments = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
-    if (file.size > 1024 * 1024) { toast('⚠ PDF zu groß (max. 1 MB): ' + file.name); continue; }
+    if (file.size > 150 * 1024) { toast('⚠ PDF zu groß (max. 150 kB): ' + file.name); continue; }
     try {
       const storageRef = ref(storage, `montageanleitung/head-pdfs/${uid()}_${file.name}`);
       await uploadBytes(storageRef, file);
@@ -1215,7 +1215,7 @@ window.saveStep = async function() {
 window.handlePhotoUpload = async function(input) {
   const files = Array.from(input.files);
   for (const file of files) {
-    const compressed = await compressImage(file, 100 * 1024); // 100kB
+    const compressed = await compressImage(file, 50 * 1024); // 50kB
     pendingPhotos.push({
       file: compressed.blob,
       dataUrl: compressed.dataUrl,
@@ -1232,8 +1232,8 @@ window.handlePhotoUpload = async function(input) {
 window.handlePDFUpload = async function(input) {
   const files = Array.from(input.files);
   for (const file of files) {
-    if (file.size > 1024 * 1024) {
-      toast('⚠ PDF zu groß (max. 1 MB): ' + file.name);
+    if (file.size > 150 * 1024) {
+      toast('⚠ PDF zu groß (max. 150 kB): ' + file.name);
       continue;
     }
     const dataUrl = await readFileAsDataURL(file);
