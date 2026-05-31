@@ -810,8 +810,45 @@ let stepEditIndex = null;
 let pendingPhotos = [];  // [{dataUrl, file}] for current step modal
 let pendingPDFs = [];    // [{name, dataUrl, file}] for current step modal
 let syncTimer = null;
-// Session-only photo cache: storageUrl → dataUrl (never persisted to Firestore)
+// In-memory photo cache: storageUrl → dataUrl
 const photoCache = new Map();
+
+// ── IndexedDB photo cache — persists across sessions ─────────────────────
+// Stores { url → dataUrl } so PDF export works after page reload
+const IDB_NAME = 'vantastic-photos', IDB_STORE = 'cache', IDB_VER = 1;
+let idb = null;
+
+async function openIDB() {
+  if (idb) return idb;
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VER);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
+    req.onsuccess = e => { idb = e.target.result; res(idb); };
+    req.onerror = () => rej(req.error);
+  });
+}
+async function idbGet(url) {
+  try {
+    const db = await openIDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(url);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => res(null);
+    });
+  } catch(e) { return null; }
+}
+async function idbSet(url, dataUrl) {
+  try {
+    const db = await openIDB();
+    return new Promise((res) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(dataUrl, url);
+      tx.oncomplete = () => res();
+      tx.onerror = () => res();
+    });
+  } catch(e) {}
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function toast(msg, dur = 2800) {
@@ -1060,7 +1097,7 @@ window.handleHeadImageUpload = async function(input) {
       const storageRef = ref(storage, `montageanleitung/head-images/${uid()}_${files[i].name}`);
       await uploadBytes(storageRef, compressed.blob);
       const url = await getDownloadURL(storageRef);
-      if (compressed.dataUrl) photoCache.set(url, compressed.dataUrl); // session cache
+      if (compressed.dataUrl) await cachePhotoOnUpload(url, compressed.dataUrl); // IDB + memory
       currentRecord.headAttachments.push({ type: 'image', url, name: files[i].name,
         natW: compressed.natW || null, natH: compressed.natH || null });
     } catch(e) { console.warn('Head image upload failed', e); }
@@ -1361,7 +1398,7 @@ async function uploadPendingPhotos() {
   const newPhotos = pendingPhotos.filter(p => !p.existing);
   const existing = pendingPhotos.filter(p => p.existing);
   existing.forEach(p => {
-    if (p.dataUrl) photoCache.set(p.url, p.dataUrl); // keep in session cache
+    if (p.dataUrl) cachePhotoOnUpload(p.url, p.dataUrl); // IDB + memory (fire & forget)
     result.push({ url: p.url, name: p.name, natW: p.natW || null, natH: p.natH || null });
   });
   if (newPhotos.length === 0) return result;
@@ -1372,7 +1409,7 @@ async function uploadPendingPhotos() {
       const storageRef = ref(storage, `montageanleitung/photos/${uid()}_${p.name}`);
       await uploadBytes(storageRef, p.file);
       const url = await getDownloadURL(storageRef);
-      if (p.dataUrl) photoCache.set(url, p.dataUrl); // session cache only
+      if (p.dataUrl) await cachePhotoOnUpload(url, p.dataUrl); // IDB + memory cache
       result.push({ url, name: p.name, natW: p.natW || null, natH: p.natH || null });
     } catch(e) {
       console.warn('Photo upload failed', e);
@@ -1864,72 +1901,49 @@ window.exportPDF = async function() {
 };
 
 async function urlToBase64(url) {
-  // If already cached return immediately
+  // 1. In-memory cache
   if (photoCache.has(url)) return photoCache.get(url);
 
-  // Try fetch() first — works if Firebase Storage CORS is configured
+  // 2. IndexedDB persistent cache (survives page reload)
+  const cached = await idbGet(url);
+  if (cached) { photoCache.set(url, cached); return cached; }
+
+  // 3. fetch() with CORS — works if Firebase Storage allows it
   try {
-    const resp = await fetch(url);
+    const resp = await fetch(url, { mode: 'cors' });
     if (resp.ok) {
       const blob = await resp.blob();
       const dataUrl = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result);
-        r.onerror = rej;
+        const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej;
         r.readAsDataURL(blob);
       });
       photoCache.set(url, dataUrl);
+      await idbSet(url, dataUrl);
       return dataUrl;
     }
-  } catch(e) { /* CORS blocked — fall through to Image approach */ }
+  } catch(e) { /* CORS blocked */ }
 
-  // Fallback: load via Image element (browser handles CORS for display)
-  // then draw to canvas — works as long as img loads successfully
+  // 4. fetch() no-cors → blob (no dataUrl possible, but good for checking availability)
+  //    Fall through to Image element approach
+
+  // 5. Image element with crossOrigin — browser fetches but canvas may be tainted
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        canvas.getContext('2d').drawImage(img, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
         photoCache.set(url, dataUrl);
+        idbSet(url, dataUrl); // async, don't await
         resolve(dataUrl);
       } catch(e) {
-        // Canvas tainted — try without crossOrigin attribute
-        const img2 = new Image();
-        img2.onload = () => {
-          const c2 = document.createElement('canvas');
-          c2.width = img2.naturalWidth; c2.height = img2.naturalHeight;
-          c2.getContext('2d').drawImage(img2, 0, 0);
-          try {
-            const d2 = c2.toDataURL('image/jpeg', 0.92);
-            photoCache.set(url, d2);
-            resolve(d2);
-          } catch(e2) { reject(new Error('Cannot read image: ' + e2.message)); }
-        };
-        img2.onerror = () => reject(new Error('Image load failed'));
-        img2.src = url;
+        reject(new Error('Canvas tainted — CORS not configured on Firebase Storage'));
       }
     };
-    img.onerror = () => {
-      // Last resort: try without crossOrigin
-      const img3 = new Image();
-      img3.onload = () => {
-        const c3 = document.createElement('canvas');
-        c3.width = img3.naturalWidth; c3.height = img3.naturalHeight;
-        c3.getContext('2d').drawImage(img3, 0, 0);
-        try {
-          const d3 = c3.toDataURL('image/jpeg', 0.92);
-          photoCache.set(url, d3);
-          resolve(d3);
-        } catch(e) { reject(new Error('Canvas tainted')); }
-      };
-      img3.onerror = () => reject(new Error('Image load failed: ' + url));
-      img3.src = url;
-    };
+    img.onerror = () => reject(new Error('Image failed to load: ' + url));
     img.src = url;
   });
 }
@@ -1942,9 +1956,16 @@ async function warmPhotoCache(record) {
   (record.headAttachments||[]).forEach(a => { if(a.type==='image' && a.url) urls.push(a.url); });
   for (const url of urls) {
     if (!photoCache.has(url)) {
-      try { await urlToBase64(url); } catch(e) { console.warn('Cache warm failed', url, e); }
+      // urlToBase64 checks IDB first, then fetches — caches result in both places
+      try { await urlToBase64(url); } catch(e) { console.warn('Cache warm failed', url); }
     }
   }
+}
+
+// ── Also store dataUrl in IDB immediately on upload (most reliable path) ──
+async function cachePhotoOnUpload(url, dataUrl) {
+  photoCache.set(url, dataUrl);
+  await idbSet(url, dataUrl);
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────
