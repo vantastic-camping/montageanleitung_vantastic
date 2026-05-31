@@ -330,7 +330,7 @@
     letter-spacing: 0.05em;
   }
   .step-body { padding: 16px 18px; }
-  .step-desc { font-size: 14px; line-height: 1.6; color: var(--gray-600); margin-bottom: 14px; }
+  .step-desc { font-size: 14px; line-height: 1.6; color: var(--gray-600); margin-bottom: 14px; white-space: pre-wrap; }
 
   /* ── PHOTOS ── */
   .photo-grid {
@@ -1502,35 +1502,49 @@ window.exportPDF = async function() {
       pdf.text(s.date||'', W-margin, y+1, { align:'right' });
       y += 8;
 
-      // Description
+      // Description — respect line breaks
       if (s.desc) {
         checkNewPage(8);
         pdf.setFont('helvetica','normal');
         pdf.setFontSize(10);
         pdf.setTextColor(60,60,60);
-        const lines = pdf.splitTextToSize(s.desc, W - margin*2 - 11);
-        for (const line of lines) {
-          checkNewPage(6);
-          pdf.text(line, margin+11, y);
-          y += 5;
+        // Split on actual newlines first, then wrap each paragraph
+        const paragraphs = s.desc.split('\n');
+        for (const para of paragraphs) {
+          const lines = para.trim() === '' ? [''] : pdf.splitTextToSize(para, W - margin*2 - 11);
+          for (const line of lines) {
+            checkNewPage(6);
+            pdf.text(line, margin+11, y);
+            y += 5;
+          }
         }
         y += 2;
       }
 
       // Photos
       if ((s.photos||[]).length > 0) {
-        let px = margin + 11;
+        const imgW = 52, imgH = 38;
+        const imgsPerRow = Math.floor((W - margin - 11) / (imgW + 4));
+        let col = 0;
+        let rowStartY = y;
+        checkNewPage(imgH + 8);
+        rowStartY = y;
         for (const photo of s.photos) {
           try {
             const imgData = await urlToBase64(photo.url);
-            const imgW = 50, imgH = 36;
-            if (px + imgW > W - margin) { px = margin+11; y += imgH + 4; }
-            checkNewPage(imgH + 6);
-            pdf.addImage(imgData, 'JPEG', px, y, imgW, imgH);
-            px += imgW + 4;
-          } catch(e) { console.warn('Photo in PDF failed', e); }
+            const px = margin + 11 + col * (imgW + 4);
+            pdf.addImage(imgData, 'JPEG', px, rowStartY, imgW, imgH);
+            col++;
+            if (col >= imgsPerRow) {
+              col = 0;
+              y = rowStartY + imgH + 4;
+              checkNewPage(imgH + 8);
+              rowStartY = y;
+            }
+          } catch(e) { console.warn('Photo in PDF failed', e); col++; }
         }
-        if (px > margin+11) y += 38;
+        // advance y past the last (possibly partial) row
+        y = rowStartY + imgH + 6;
       }
 
       // PDF items (listed as links, can't embed easily)
@@ -1587,13 +1601,35 @@ window.exportPDF = async function() {
 };
 
 async function urlToBase64(url) {
-  const resp = await fetch(url);
-  const blob = await resp.blob();
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result);
-    r.onerror = rej;
-    r.readAsDataURL(blob);
+  // Firebase Storage URLs block fetch() via CORS — load via Image element instead
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => {
+      // Second attempt without crossOrigin (works for same-origin or CORS-permissive URLs)
+      const img2 = new Image();
+      img2.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img2.naturalWidth;
+        canvas.height = img2.naturalHeight;
+        canvas.getContext('2d').drawImage(img2, 0, 0);
+        try {
+          resolve(canvas.toDataURL('image/jpeg', 0.92));
+        } catch(e) {
+          reject(new Error('Canvas tainted: ' + e.message));
+        }
+      };
+      img2.onerror = () => reject(new Error('Image load failed: ' + url));
+      img2.src = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+    };
+    img.src = url;
   });
 }
 
