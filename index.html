@@ -1827,16 +1827,18 @@ window.exportPDF = async function() {
 
     addFooter(pageNum, pageNum);
 
-    // Build filename
-    const prodName = (currentRecord.produkt||'Anleitung').slice(0,10).replace(/\s+/g,'_');
+    // Build filename — include record ID to ensure uniqueness per record
+    const prodName = (currentRecord.produkt||'Anleitung').slice(0,10).replace(/[^a-zA-Z0-9äöüÄÖÜ]/g,'_');
     const latestChange = (currentRecord.changes||[]).map(c=>c.date).sort().reverse()[0] || todayStr();
     const datePart = latestChange.replace(/\./g,'-');
-    const fileName = `${prodName}_${datePart}.pdf`;
+    const fileName = `${prodName}_${datePart}_${currentId}.pdf`;
 
     // Save to blob and upload to Firebase Storage
+    // Use a fixed path per record so re-exports overwrite the previous version
+    const storagePath = `montageanleitung/exports/${currentId}.pdf`;
     const pdfBlob = pdf.output('blob');
     try {
-      const storageRef = ref(storage, `montageanleitung/exports/${fileName}`);
+      const storageRef = ref(storage, storagePath);
       await uploadBytes(storageRef, pdfBlob);
       const url = await getDownloadURL(storageRef);
       currentRecord.exportedPdfUrl = url;
