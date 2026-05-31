@@ -941,6 +941,8 @@ function showDetailPage() {
   renderSteps();
   renderChanges();
   updateDetailTitle();
+  // Warm the photo cache in the background so PDF export has images ready
+  warmPhotoCache(currentRecord).catch(() => {});
 }
 
 window.goBack = function() {
@@ -1862,36 +1864,87 @@ window.exportPDF = async function() {
 };
 
 async function urlToBase64(url) {
-  // Firebase Storage URLs block fetch() via CORS — load via Image element instead
+  // If already cached return immediately
+  if (photoCache.has(url)) return photoCache.get(url);
+
+  // Try fetch() first — works if Firebase Storage CORS is configured
+  try {
+    const resp = await fetch(url);
+    if (resp.ok) {
+      const blob = await resp.blob();
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(blob);
+      });
+      photoCache.set(url, dataUrl);
+      return dataUrl;
+    }
+  } catch(e) { /* CORS blocked — fall through to Image approach */ }
+
+  // Fallback: load via Image element (browser handles CORS for display)
+  // then draw to canvas — works as long as img loads successfully
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.getContext('2d').drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/jpeg', 0.92));
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        photoCache.set(url, dataUrl);
+        resolve(dataUrl);
+      } catch(e) {
+        // Canvas tainted — try without crossOrigin attribute
+        const img2 = new Image();
+        img2.onload = () => {
+          const c2 = document.createElement('canvas');
+          c2.width = img2.naturalWidth; c2.height = img2.naturalHeight;
+          c2.getContext('2d').drawImage(img2, 0, 0);
+          try {
+            const d2 = c2.toDataURL('image/jpeg', 0.92);
+            photoCache.set(url, d2);
+            resolve(d2);
+          } catch(e2) { reject(new Error('Cannot read image: ' + e2.message)); }
+        };
+        img2.onerror = () => reject(new Error('Image load failed'));
+        img2.src = url;
+      }
     };
     img.onerror = () => {
-      // Second attempt without crossOrigin (works for same-origin or CORS-permissive URLs)
-      const img2 = new Image();
-      img2.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img2.naturalWidth;
-        canvas.height = img2.naturalHeight;
-        canvas.getContext('2d').drawImage(img2, 0, 0);
+      // Last resort: try without crossOrigin
+      const img3 = new Image();
+      img3.onload = () => {
+        const c3 = document.createElement('canvas');
+        c3.width = img3.naturalWidth; c3.height = img3.naturalHeight;
+        c3.getContext('2d').drawImage(img3, 0, 0);
         try {
-          resolve(canvas.toDataURL('image/jpeg', 0.92));
-        } catch(e) {
-          reject(new Error('Canvas tainted: ' + e.message));
-        }
+          const d3 = c3.toDataURL('image/jpeg', 0.92);
+          photoCache.set(url, d3);
+          resolve(d3);
+        } catch(e) { reject(new Error('Canvas tainted')); }
       };
-      img2.onerror = () => reject(new Error('Image load failed: ' + url));
-      img2.src = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+      img3.onerror = () => reject(new Error('Image load failed: ' + url));
+      img3.src = url;
     };
     img.src = url;
   });
+}
+
+// ── Warm photo cache for a record in the background ───────────────────────
+// Called after opening a record so images are ready when PDF export runs
+async function warmPhotoCache(record) {
+  const urls = [];
+  (record.steps||[]).forEach(s => (s.photos||[]).forEach(p => { if(p.url) urls.push(p.url); }));
+  (record.headAttachments||[]).forEach(a => { if(a.type==='image' && a.url) urls.push(a.url); });
+  for (const url of urls) {
+    if (!photoCache.has(url)) {
+      try { await urlToBase64(url); } catch(e) { console.warn('Cache warm failed', url, e); }
+    }
+  }
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────
